@@ -14,6 +14,7 @@ import pwd
 ARCADE_USER = "arcade"
 DEST_PATH = Path("/opt") / "game"
 SCREENSHOTS_PATH = Path("/opt") / "screenshots"
+TERMINAL_APP = "qterminal"
 
 # Utilities ====================================================================
 
@@ -129,6 +130,18 @@ def enable_service(service_name: str):
 
 # Business Logic ===============================================================
 
+def hide_bootloader():
+    """Set the timeout of the bootloader to 0"""
+    print("Hiding the bootloader menu")
+    run_command("bootctl set-timeout 0")
+
+def create_arcade_user():
+    """Create dedicated arcade user account"""
+    if not user_exists(ARCADE_USER):
+        print(f"Adding the {ARCADE_USER} user")
+        run_command(f"useradd -m -s /bin/bash {ARCADE_USER}")
+        run_command(f"passwd -d {ARCADE_USER}")
+
 def copy_game_files(game_dir: Path):
     """Copy game files to the arcade user directory"""
     print(f"Copying over the game files to the {ARCADE_USER} user")
@@ -137,4 +150,200 @@ def copy_game_files(game_dir: Path):
     shutil.copytree(game_dir, DEST_PATH, dirs_exist_ok=True)
     run_command(f"chmod -R 777 {DEST_PATH}")
 
+def setup_autologin():
+    """Setup automatic login for arcade user using greetd and disable competing desktop managers"""
+    print(f"Setting up automatic login for the {ARCADE_USER} user")
+    override_dir = Path("/etc") / "greetd"
+    make_dir(override_dir)
+    autologin_conf = override_dir / "config.toml"
+    write_file(autologin_conf, f"""[terminal]
+vt = "next"
+[default_session]
+command = "tuigreet --user-menu --cmd startx"
+user = "greeter"
+[initial_session]
+user = "{ARCADE_USER}"
+command = "startx"
+""")
+    disable_service("sddm.service")
+    enable_service("greetd.service")
+
+def setup_screenshots_directory():
+    """Setup screenshots directory"""
+    print("Setting up the screenshots directory")
+    make_dir(SCREENSHOTS_PATH)
+    run_command(f"chmod 777 {SCREENSHOTS_PATH}")
+
+def set_desktop_environments(admin_user: str):
+    """Ensure the correct desktop environment is loaded for each user"""
+    admin_init_path = Path("/home") / admin_user / ".xinitrc"
+    write_file(admin_init_path, """#!/bin/sh
+exec startlxqt
+""")
+    arcade_init_path = Path("/home") / ARCADE_USER / ".xinitrc"
+    write_file(arcade_init_path, """#!/bin/sh
+exec openbox-session
+""")
+    run_command(f"chown {ARCADE_USER}:{ARCADE_USER} {arcade_init_path}")
+
+def setup_wine_support(offline: bool):
+    """Setup Wine compatibility layer for Windows games"""
+    if offline:
+        print("Offline mode: skipping Wine installation and setup")
+        return
+    print("Executable is a Windows app, preparing Wine")
+    run_command("dpkg --add-architecture i386")
+    wine_user_path = Path("/home") / ARCADE_USER / ".wine"
+    make_dir(wine_user_path)
+    run_command(f"sudo -u {ARCADE_USER}/ WINEPEFIX='{wine_user_path}' wineboot --init")
+
+def setup_screen_resolution(width: int, height: int):
+    """Setup screen resolution for arcade user"""
+    print(f"Setting the screen resolution layout for the {ARCADE_USER} user")
+    screenlayout_path = Path("/home") / ARCADE_USER / ".screenlayout"
+    make_dir(screenlayout_path)
+    # Get connected outputs
+    try:
+        command = "xrandr --query | grep -E \" connected| disconnected\" | cut -d\" \" -f1"
+        result = run_command(command, check=False)
+        outputs = result.stdout.strip().split("\n")
+        outputs = [o for o in outputs if o]
+    except subprocess.CalledProcessError:
+        outputs = ["HDMI-1", "VGA-1", "eDP-1"]  # Default outputs
+    xrandr_cmd = "xrandr"
+    for output in outputs:
+        xrandr_cmd += f" --output {output} --mode {width}x{height} --rate 60"
+    resolution_script_path = Path(screenlayout_path) / "arcade_resolution.sh"
+    write_file(resolution_script_path, f"""#!/bin/bash
+{xrandr_cmd}
+""", is_executable=True)
+
+def setup_openbox_autostart(game_name: str,
+                            is_windows_game: bool,
+                            width: int,
+                            height: int):
+    """Setup Openbox autostart for arcade user"""
+    print(f"Configuring the autostart file for the {ARCADE_USER} user")
+    openbox_path = Path("/home") / ARCADE_USER / ".config" / "openbox"
+    make_dir(openbox_path)
+    run_game_command = f"\"{DEST_PATH}/{game_name}\""
+    if is_windows_game:
+        run_game_command = ("wine explorer /desktop=Arcade,"
+                            f"{width}x{height} {run_game_command}")
+    resolution_script_path = Path("/home") / ARCADE_USER / ".screenlayout" / "arcade_resolution.sh"
+    autostart_path = Path(openbox_path) / "autostart"
+    write_file(autostart_path, f"""# Disable DPMS
+xset -dpms &
+# Disable screensaver
+xset s off &
+# Disable screen blanking
+xset s noblank &
+# Apply the resolution
+{resolution_script_path} &
+# Hide the cursor
+unclutter -idle 0.01 -root &
+# Cache all fonts to prevent the system from hanging on initial font load
+fc-cache -fv &
+# Infinite loop with a check for termination
+while true; do
+    {run_game_command}
+    sleep 1 &
+done
+""")
+
+def setup_openbox_keybindings():
+    """Setup keyboard shortcuts for arcade user.
+    The resulting openbox configuration is extremely minimal
+    """
+    print("Configuring keybindings for the arcade user")
+    openbox_path = Path("/home") / ARCADE_USER / ".config" / "openbox"
+    make_dir(openbox_path)
+    openbox_config_path = Path(openbox_path) / "rc.xml"
+    write_file(openbox_config_path, f"""<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config>
+  <focus>
+    <focusNew>yes</focusNew>
+  </focus>
+  <keyboard>
+    <keybind key="A-F4">
+      <action name="Close"/>
+    </keybind>
+    <keybind key="C-A-Delete">
+      <action name="Execute">
+        <command>
+            openbox --exit
+        </command>
+      </action>
+    </keybind>
+        <keybind key="A-F7">
+            <action name="Execute">
+                <command>{TERMINAL_APP}</command>
+            </action>
+        </keybind>
+        <keybind key="A-F8">
+            <action name="Execute">
+                <command>{TERMINAL_APP} -e nmtui</command>
+            </action>
+        </keybind>
+    <keybind key="A-F9">
+      <action name="Execute">
+        <command>{TERMINAL_APP} -e wiremix</command>
+      </action>
+    </keybind>
+    <keybind key="A-F10">
+      <action name="Execute">
+        <command>arandr</command>
+      </action>
+    </keybind>
+        <keybind key="A-F11">
+            <action name="Execute">
+                <command>{TERMINAL_APP} -e htop</command>
+            </action>
+        </keybind>
+    <keybind key="A-F12">
+      <action name="Execute">
+        <command>scrot '{SCREENSHOTS_PATH}/%Y-%m-%d-%H%M%S.png'</command>
+      </action>
+    </keybind>
+  </keyboard>
+  <applications>
+        <application name="{TERMINAL_APP}">
+            <maximized>yes</maximized>
+        </application>
+  </applications>
+</openbox_config>
+""")
+
+def ensure_arcade_user_owns_home():
+    """Ensure the arcade user owns their home directory"""
+    run_command(f"chown -R {ARCADE_USER}:{ARCADE_USER} /home/{ARCADE_USER}")
+
 # Main Logic ===================================================================
+
+def main():
+    """Main function"""
+    args = parse_args()
+    setup_autologin()
+    hide_bootloader()
+    create_arcade_user()
+    setup_screenshots_directory()
+    validate_game_binary(args.game_bin)
+    is_windows_game = detect_windows_binary(args.game_bin)
+    if is_windows_game:
+        setup_wine_support(args.offline)
+    if args.width == 0 or args.height == 0:
+        args.width, args.height = get_screen_resolution(args.width, args.height)
+    game_dir = Path(args.game_bin).parent
+    copy_game_files(game_dir)
+    # set_desktop_environments()
+    setup_screen_resolution(args.width, args.height)
+    setup_openbox_keybindings()
+    setup_openbox_autostart(Path(args.game_bin).name,
+                            is_windows_game,
+                            args.width,
+                            args.height)
+    ensure_arcade_user_owns_home()
+    print("Cloister setup completed successfully.")
+
+if __name__ == "__main__":
+    main()
