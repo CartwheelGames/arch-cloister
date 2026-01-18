@@ -12,7 +12,9 @@
     "removable": false
   },
   "debug": false,
-  "custom_commands": [],
+  "custom_commands": [
+    "python3 /tmp/repo/arch_cloister_post_install.py"
+  ],
   "hostname": "cloister",
   "kernels": ["linux"],
   "locale_config": {
@@ -46,7 +48,7 @@
   ],
   "parallel downloads": 0,
   "profile_config": {
-    "gfx_driver": "All open-source (default)",
+    "gfx_driver": "All open-source",
     "greeter": "sddm",
     "profile": {
       "custom_settings": {
@@ -56,7 +58,7 @@
       "main": "Desktop"
     }
   },
-  "script": "guided",
+  "script": "custom_script",
   "services": [],
   "silent": false,
   "swap": {
