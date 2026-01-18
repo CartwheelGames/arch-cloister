@@ -1,0 +1,68 @@
+{
+  "archinstall-language": "English",
+  "app_config": {
+    "audio_config": {
+      "audio": "pipewire"
+    }
+  },
+  "auth_config": null,
+  "bootloader_config": {
+    "bootloader": "Systemd-boot",
+    "uki": false,
+    "removable": false
+  },
+  "debug": false,
+  "custom_commands": [],
+  "hostname": "cloister",
+  "kernels": ["linux"],
+  "locale_config": {
+    "kb_layout": "us",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_US"
+  },
+  "network_config": {
+    "type": "nm_iwd"
+  },
+  "no_pkg_lookups": false,
+  "ntp": true,
+  "offline": false,
+  "packages": [
+    "ark",
+    "python",
+    "unclutter",
+    "arandr",
+    "wiremix",
+    "terminator",
+    "unzip",
+    "nano",
+    "scrot",
+    "htop",
+    "wine",
+    "libwine",
+    "wine64",
+    "fonts-wine",
+    "winetricks",
+    "wine32:i386"
+  ],
+  "parallel downloads": 0,
+  "profile_config": {
+    "gfx_driver": "All open-source (default)",
+    "greeter": "sddm",
+    "profile": {
+      "custom_settings": {
+        "Lxqt": {}
+      },
+      "details": ["Lxqt"],
+      "main": "Desktop"
+    }
+  },
+  "script": "guided",
+  "services": [],
+  "silent": false,
+  "swap": {
+    "enabled": true,
+    "algorithm": "zstd"
+  },
+  "timezone": "UTC",
+  "version": "3.0.15"
+}

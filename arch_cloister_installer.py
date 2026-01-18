@@ -1,5 +1,5 @@
-"""Cloister — automated Linux setup for arcade machines."""
 #!/usr/bin/env python3
+"""Cloister — automated Linux setup for arcade machines."""
 
 import os
 import sys
@@ -8,6 +8,8 @@ import shutil
 import argparse
 from pathlib import Path
 import pwd
+
+# Constants ====================================================================
 
 ARCADE_USER = "arcade"
 DEST_PATH = Path("/opt") / "game"
