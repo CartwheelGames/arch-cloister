@@ -4,8 +4,8 @@
 import os
 import sys
 import subprocess
-import argparse
 from pathlib import Path
+import shutil
 import pwd
 
 # Constants ====================================================================
@@ -55,20 +55,24 @@ def user_exists(username: str):
     except KeyError:
         return False
 
-def parse_args():
-    """Parse arguments"""
-    print("Parsing arguments")
-    # Create argument parser and add properties
-    parser = argparse.ArgumentParser(description="Cloister Linux Setup")
-    parser.add_argument("game_bin", help="Path to the game binary")
-    parser.add_argument("--width", type=int, help="Screen width")
-    parser.add_argument("--height", type=int, help="Screen height")
-    parser.add_argument("--offline", action="store_true",
-                        help="Skip updates, upgrades and package downloads")
-    return parser.parse_args()
+def copy_game_dir_from_home_to_opt():
+    """Copy the game directory from /home/skel to /opt/game"""
+    skel_game_path = Path("/home") / ARCADE_USER / "game"
+    if skel_game_path.exists():
+        print(f"Copying game directory from {skel_game_path} to {GAME_DIR}")
+        shutil.copytree(skel_game_path, GAME_DIR, dirs_exist_ok=True)
+        shutil.rmtree(skel_game_path)
+    else:
+        print(f"Error: Game directory not found at {skel_game_path}")
+        sys.exit(1)
 
-def get_game_bin():
-    "Find the game binary in the game directory"
+def find_game_bin():
+    "Search the game binary in the game directory"
+    print("Searching for the game binary. Do it here, walk the directory")
+    p = Path(GAME_DIR)
+    for item in p.iterdir():
+        if item.is_file() and os.access(item, os.X_OK):
+            return str(item.resolve())
     return ""
 
 def validate_game_binary(game_bin: str):
@@ -101,16 +105,16 @@ def detect_windows_binary(game_bin: str):
 def get_screen_resolution():
     """Get the screen resolution"""
     output = subprocess.check_output("xrandr").decode("utf-8")
+    width = 1920
+    height = 1080
     # Find the line with the current resolution (indicated by '*')
     for line in output.splitlines():
         if '*' in line:
             # The resolution is typically the first element (e.g., '1920x1080')
             resolution = line.split()[0]
             split = resolution.split('x')
-            if width == 0:
-                width = int(split[0])
-            if height == 0:
-                height = int(split[1])
+            width = int(split[0])
+            height = int(split[1])
     return width, height
 
 def is_service_active(service_name: str):
@@ -181,11 +185,8 @@ exec openbox-session
 """)
     run_command(f"chown {ARCADE_USER}:{ARCADE_USER} {arcade_init_path}")
 
-def setup_wine_support(offline: bool):
+def setup_wine_support():
     """Setup Wine compatibility layer for Windows games"""
-    if offline:
-        print("Offline mode: skipping Wine installation and setup")
-        return
     print("Executable is a Windows app, preparing Wine")
     run_command("dpkg --add-architecture i386")
     wine_user_path = Path("/home") / ARCADE_USER / ".wine"
@@ -317,7 +318,7 @@ def ensure_arcade_user_owns_home():
 
 def main():
     """Main function"""
-    game_bin = get_game_bin()
+    game_bin = find_game_bin()
     setup_autologin()
     hide_bootloader()
     create_arcade_user()
@@ -325,7 +326,7 @@ def main():
     validate_game_binary(game_bin)
     is_windows_game = detect_windows_binary(game_bin)
     if is_windows_game:
-        setup_wine_support(game_bin)
+        setup_wine_support()
     height, width = get_screen_resolution()
     # set_desktop_environments()
     setup_screen_resolution(width, height)
