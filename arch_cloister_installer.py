@@ -13,6 +13,7 @@ import archinstall
 
 GAME_DIR = Path("/opt") / "game"
 REPO_DIR = Path("/tmp") / "repo"
+REPO_URL = "https://www.github.com/CartwheelGames/arch-cloister"
 
 # Utilities ====================================================================
 
@@ -48,9 +49,10 @@ def show_game_directory_dialog(stdscr: curses.window) -> str:
     # Placeholder for TUI dialog implementation
     curses.curs_set(0)  # hide cursor
     stdscr.clear()
-
     options = ["Local Game", "Remote Game"]
     current_selection = 0
+
+    run_command("pacman -S --noconfirm fzf udiskie")
 
     def draw_menu():
         stdscr.clear()
@@ -86,7 +88,10 @@ def show_game_directory_dialog(stdscr: curses.window) -> str:
 
     stdscr.refresh()
     curses.echo()
-    input_str = stdscr.getstr(2, 25, 60).decode("utf-8")
+    if current_selection == 0:
+        input_str = run_command("fzf", check=False).stdout.strip()
+    else:
+        input_str = stdscr.getstr(2, 25, 60).decode("utf-8")
     curses.noecho()
 
     stdscr.clear()
@@ -95,6 +100,9 @@ def show_game_directory_dialog(stdscr: curses.window) -> str:
     stdscr.addstr(7, 2, "Press any key to exit...")
     stdscr.refresh()
     stdscr.getch()
+    #uninstall fzf
+    run_command("pacman -R --noconfirm fzf udiskie")
+
     return input_str
 
 def main(stdscr: curses.window):
@@ -112,36 +120,28 @@ def main(stdscr: curses.window):
             game_file_path = archive_path / file_name
             run_command(f"curl -L {game_origin} -o {archive_path / file_name}")
 
-        # Extract archive using 7zip
-        is_archive = any(game_file_path.suffix in ext for ext in [".zip",
-                                                                  ".tar",
-                                                                  ".gzip",
-                                                                  ".tar.gz",
-                                                                  ".7z",
-                                                                  ".rar"])
-        game_path = Path("/tmp") / "game"
+        # Copy or extract game files to /etc/skel/game for archinstall to pick up
+        # and include in new user home directories
+        skel_game_path = Path("/etc") / "skel" / "game"
+        is_archive = any(game_file_path.suffix in ext for ext in [".zip"])
         if is_archive:
+            run_command("pacman --noconfirm -S unzip")
             print(f"Extracting game archive: {game_file_path}")
-            run_command("pacman -Sy --noconfirm 7zip")
-            run_command(f"mkdir -p {game_path}")
-            run_command(f"7z x {game_file_path} -o{game_path} -y")
+            run_command(f"mkdir -p {skel_game_path}")
+            run_command(f"unzip {game_file_path} -d {skel_game_path}")
+            run_command("pacman --noconfirm -R unzip")
         else:
-            game_path = Path(game_file_path)
-
+            shutil.copytree(game_file_path, skel_game_path, dirs_exist_ok=True)
         # Validate game binary
-        game_bin = find_game_bin(game_path)
+        game_bin = find_game_bin(skel_game_path)
         validate_game_binary(game_bin)
-
-        # Copy game binary into /opt/game folder on target OS
-        shutil.copytree(game_path, Path("/etc") / "skel" / "game")
 
         print("Cloning the installer repo locally")
         run_command("pacman --noconfirm -S git")
         if REPO_DIR.exists():
             run_command(f"git -C {REPO_DIR} pull origin main")
         else:
-            run_command(f"git clone https://www.github.com/CartwheelGames/arch-cloister {REPO_DIR}")
-
+            run_command(f"git clone --depth 1 {REPO_URL} {REPO_DIR}")
         print("Copying the custom archinstall script into the relevant directory")
         archinstall_scripts_dir = Path(archinstall.__file__).parent / "scripts"
         shutil.copyfile(REPO_DIR / "custom_script.py",
