@@ -112,17 +112,19 @@ def main(stdscr: curses.window):
             game_file_path = archive_path / file_name
             run_command(f"curl -L {game_origin} -o {archive_path / file_name}")
 
-        # Extract archive using ark
+        # Extract archive using 7zip
         is_archive = any(game_file_path.suffix in ext for ext in [".zip",
                                                                   ".tar",
+                                                                  ".gzip",
                                                                   ".tar.gz",
                                                                   ".7z",
                                                                   ".rar"])
         game_path = Path("/tmp") / "game"
         if is_archive:
             print(f"Extracting game archive: {game_file_path}")
+            run_command("pacman -Sy --noconfirm 7zip")
             run_command(f"mkdir -p {game_path}")
-            run_command(f"gzip -d {game_file_path}")
+            run_command(f"7z x {game_file_path}")
             game_path = game_file_path.with_suffix('')
         else:
             game_path = Path(game_file_path)
