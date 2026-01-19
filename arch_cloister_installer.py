@@ -124,8 +124,7 @@ def main(stdscr: curses.window):
             print(f"Extracting game archive: {game_file_path}")
             run_command("pacman -Sy --noconfirm 7zip")
             run_command(f"mkdir -p {game_path}")
-            run_command(f"7z x {game_file_path}")
-            game_path = game_file_path.with_suffix('')
+            run_command(f"7z x {game_file_path} -o{game_path} -y")
         else:
             game_path = Path(game_file_path)
 
