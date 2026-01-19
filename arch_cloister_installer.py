@@ -122,7 +122,8 @@ def main(stdscr: curses.window):
         if is_archive:
             print(f"Extracting game archive: {game_file_path}")
             run_command(f"mkdir -p {game_path}")
-            run_command(f"ark -b {game_file_path} -o {game_path}")
+            run_command(f"gzip -d {game_file_path}")
+            game_path = game_file_path.with_suffix('')
         else:
             game_path = Path(game_file_path)
 
